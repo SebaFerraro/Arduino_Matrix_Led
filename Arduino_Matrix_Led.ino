@@ -1,7 +1,8 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <ArduinoOTA.h>
-#include <ArduinoJSON.h>
+#include <ArduinoJson.h>
+#include <QueueList.h>
 //#include "caracteres.h"
 #include "fonts/TinyFont.h"
 //#include "fonts/small_font.h"
@@ -34,24 +35,30 @@
 #define DELAY_BANNER 3000
 #define TXT_DEBUG 0
 #define CaracteresArray CaracteresArray2
-#define MQTT_SERVER "10.110.254.121"  //you MQTT IP Address
+#define MQTT_SERVER "10.77.17.89"  //you MQTT IP Address
 #define MQTT_PORT 1883  //you MQTT IP Address
 #define MQTT_USER "ha"  //you MQTT IP Address
 #define MQTT_PASS "4ut0m4t1c0"  //you MQTT IP Address
 
-const char* ssid = "10110";
-const char* password = "T3cn0C10r";
+const char* ssid = "wifi";
+const char* password = "secret1703secret1703";
 static int taskCore = 0;
 int analog_value = 0;
 static int Wconectado = 0;
 String TopicBase = "cior";
 String TopicDev = "dev-display-01";
 String Tdisplay1 = "display/lab/dsp1";
+String Tdisplay2 = "display/lab/don1";
+String txt="";
+uint8_t  txtcolor=0;
+uint16_t txttiempo=0;
+uint8_t  txtpermanente=0;
+uint8_t  txtidperm=0;
+uint8_t  txtindex=0;
 
 WiFiClient espClient;
 PubSubClient client(espClient);
 TaskHandle_t tempTaskHandle = NULL;
-
 
 char buf[100];
 int col=1;
@@ -64,6 +71,18 @@ uint8_t uvi=0;
 uint8_t prom=0;
 uint8_t leds=0;
 
+typedef struct strMSG {
+  String  texto;
+  uint8_t  color;
+  uint16_t tiempo;
+  uint8_t  permanente;
+  uint8_t  idperm;
+} MSG;
+
+MSG tabla[6]={String("Laboratorio de Electronica y Tecnologia del CIOR"), 2,3000,1,0 };
+
+QueueList <MSG> queue;
+MSG MsgTXT;
 uint32_t Matriz[]={
 0b00000000000000000000000000000000,
 0b00000000000000000000000000000000,
@@ -169,12 +188,6 @@ void on_message(char* topic, byte* payload, unsigned int length) {
   Serial.println((char)payload[0]);
   Serial.print("length: ");
   Serial.println(length);
-  StaticJsonBuffer<400> jsonBuffer;
-  JsonObject& root = jsonBuffer.parseObject(payload);
-  if (!root.success()) {
-    Serial.println("parseObject() failed");
-    return;
-  }
   char cpayload[length + 1];
   strncpy (cpayload, (char*)payload, length);
   cpayload[length] = '\0';
@@ -186,7 +199,7 @@ void on_message(char* topic, byte* payload, unsigned int length) {
     if((cpayload[0] == '1') || (cpayload[0] == '0')){
        Serial.print("Topic1 Payload : ");
        Serial.println(msg.toInt());
-       digitalWrite(RLY_P1, msg.toInt());
+       //digitalWrite(RLY_P1, msg.toInt());
        pubicatopic_mqtt(Topic1C, msg);
     }
   }else{
@@ -194,6 +207,52 @@ void on_message(char* topic, byte* payload, unsigned int length) {
     Serial.println(topicStr);
     Serial.println(Topic1);
   }
+  
+  StaticJsonBuffer<400> jsonBuffer;
+  String Topic2=TopicBase + "/" + Tdisplay2;
+  String Topic2C=TopicBase + "/" + Tdisplay2 + "c";
+  
+  if (topicStr == Topic2){
+
+    JsonObject& root=jsonBuffer.parseObject(payload);
+    if (!root.success()) {
+      Serial.println("parseObject() failed");
+      return;
+    }
+    MSG ResMsg;
+    if(root.containsKey("texto") && root.containsKey("color") && root.containsKey("tiempo") && root.containsKey("permanente") && root.containsKey("idperm")){
+      ResMsg.texto=root["texto"];
+      ResMsg.color=root["color"];
+      ResMsg.tiempo=root["tiempo"];
+      ResMsg.permanente=root["permanente"];
+      ResMsg.idperm=root["idperm"];
+      if(ResMsg.permanente==0){
+         queue.push (ResMsg);
+      }else{
+        if(ResMsg.idperm<6){
+          if(ResMsg.tiempo==0)
+             ResMsg.permanente=0;
+          tabla[ResMsg.idperm]=ResMsg;
+        }
+     }
+    }
+  }else{
+    Serial.println("Topic2 No coincide : ");
+    Serial.println(topicStr);
+    Serial.println(Topic2);
+  }
+}
+
+int pubicatopic_mqtt(String topic, String msg){
+  int rsus;
+  rsus=client.publish(string2char(topic), msg.c_str());
+  Serial.print( "Publish : ");
+  Serial.println(rsus);
+  Serial.print( "Topic : ");
+  Serial.println(topic);
+  Serial.print( "Valor :");
+  Serial.println(msg);
+  return rsus;
 }
 
 void coreTask( void * pvParameters ){
@@ -309,13 +368,13 @@ void Agrega_Car_Mat(const uint8_t Caract[], int inicio,uint32_t Mat[]){
   }
 }
 
-void Grafica_Car_Mat(const uint8_t Caract[], int inicio,uint32_t Mat[]){
+void Grafica_Car_Mat(const uint8_t Caract[], int inicio,uint32_t Mat[],uint8_t color){
     if(inicio==0){
       for (int j=0;j<8;j++){
         for (int i=0;i<Mat_Alt;i++){
           Mat[i]=(uint32_t)(((Mat[i] << 1))| (uint32_t)(Caract[i]>>(8-j)));
         }
-        Grafica_Mat(Mat,32,2,0);
+        Grafica_Mat(Mat,32,color,0);
         if(SDELAY>0)
           delayMicroseconds(SDELAY);
      }
@@ -614,6 +673,8 @@ void setup() {
  
  ArduinoOTA.setHostname((const char*) TopicDev.c_str()); // A name given to your ESP8266 module when discovering it as a port in ARDUINO IDE
  delay(400);
+ queue.setPrinter (Serial);
+
  client.setServer(MQTT_SERVER, MQTT_PORT);
  client.setCallback(on_message);
  xTaskCreatePinnedToCore(coreTask, "coreTask", 10000, NULL, 0, NULL, taskCore);      
@@ -633,116 +694,60 @@ void setup() {
      delay(DELAY_BANNER / portTICK_RATE_MS);
   Grafica_Banner();
   Blanc_Mat(Matriz);
+  txtindex=0;
   
 }
  
 void loop(){
     //val=getTemp();
-   if (Wconectado == 0){
+    if (Wconectado == 0){
       Serial.println("Error No conectado wifi Wifi_init.");
       Wifi_init();
-   }
-    char texto[]="Laboratorio de Electronica y Tecnologia del CIOR";
-        //printf("Temperatura %d\n",val);
-    //int itemp = (int)roundf(val);
-          //printf("iTemp %d\n",itemp);
-    int k=0;
+    }
+    if(!queue.isEmpty ()){
+        MsgTXT=queue.pop();
+        
+    }else{
+        if((sizeof(tabla)/sizeof(MsgTXT))>0){
+            while(txtindex<(sizeof(tabla)/sizeof(MsgTXT)) && txtindex<6){
+                MsgTXT=tabla[txtindex];
+                txtindex++;
+                if(MsgTXT.tiempo>0){
+                   break;    
+                }
+                
+            }
+             if(txtindex>=(sizeof(tabla)/sizeof(MsgTXT)) && txtindex>5)
+                txtindex=0;
+        }else{
+            txtindex=0;
+        }
+    }
+    txt=MsgTXT.texto;
+    txtcolor=MsgTXT.color;
+    txttiempo=MsgTXT.tiempo;
+    txtpermanente=MsgTXT.permanente;
+    txtidperm=MsgTXT.idperm;
     
+    int k=0;
     Blanc_Mat(Matriz);
     int letra=0;
-    
-     //   Pone_Car_Mat(TinyFont[10],k,Matriz);
-    //k=k+8;
-    for(int i=0;i<(sizeof(texto)-1);i++){
-    //  letra=(int)texto[i];
-//    while (itemp > 0)
-//    { 
-      //    int digit = itemp%10;
-  //        itemp /= 10;
-   //   Pone_Car_Mat(TinyFont[letra],k,Matriz);
-     letra=(int)texto[i];
-     sprintf(buf,"Letra: %c int: %d \n",texto[i],letra);
-     Serial.print (buf);
-     //Pone_Car_Mat(TinyFont[letra-32],k,Matriz);
-     Grafica_Car_Mat(TinyFont[letra-32], 0,Matriz);
-     //Agrega_Car_Mat(small_font[letra-32], 0,Matriz);
-     //Agrega_Car_Mat(Sinclair_S[letra-32], 0,Matriz);
-     //Agrega_Car_Mat(Sinclair_Inverted_S[letra-32], 0,Matriz);
-     
-     k=k+8;
-//          printf("Digit : %d  Posicion : %d", digit,k);
-   // }
+    for(int i=0;i<(sizeof(txt)-1);i++){
+        letra=(int)texto[i];
+        sprintf(buf,"Letra: %c int: %d \n",txt[i],letra);
+        Serial.print (buf);
+        //Pone_Car_Mat(TinyFont[letra-32],k,Matriz);
+        Grafica_Car_Mat(TinyFont[letra-32], 0,Matriz,txtcolor);
+        //Agrega_Car_Mat(small_font[letra-32], 0,Matriz);
+        //Agrega_Car_Mat(Sinclair_S[letra-32], 0,Matriz);
+        //Agrega_Car_Mat(Sinclair_Inverted_S[letra-32], 0,Matriz);
+        k=k+8;
+        if(TXT_DEBUG>0)
+          Imprime_Mat(Matriz);
+    }
+    if(txttiempo>0)
+          delay(txttiempo / portTICK_RATE_MS);
     if(TXT_DEBUG>0)
-       Imprime_Mat(Matriz);
-    //Grafica_Mat(Matriz,32,2,0);
-    //      if(DELAY_INFO>0)
-    //  delay(DELAY_INFO / portTICK_RATE_MS);
-    }
-    if(DELAY_BANNER>0)
-          delay(DELAY_BANNER / portTICK_RATE_MS);
-//    val=getHumidity();
-//        printf("Humedad %d\n",val);
-//    itemp = (int)roundf(val);
-//          printf("iHumed %d\n",itemp);
-//    k=0;
-//    Blanc_Mat(Matriz);
-//    Pone_Car_Mat(CaracteresArray[11],k,Matriz);
-//    k=k+8;
-//    while (itemp > 0)
-//    { 
- //         int digit = itemp%10;
-//          itemp /= 10;
-//      Pone_Car_Mat(CaracteresArray[digit],k,Matriz);
-//      k=k+8;
-//          printf("Digit : %d  Posicion : %d", digit,k);
-//    }
-//    if(TXT_DEBUG>0)
-//       Imprime_Mat(Matriz);
-//    Grafica_Mat(Matriz,32,2,1);
- //         if(DELAY_INFO>0)
-//      delay(DELAY_INFO / portTICK_RATE_MS);
-    
-    if (uv!=65534){
-      uvc= (int)roundf(uv*CORR_VALUV/100);  
-      //uvi=i2c_veml6070_indexuv(uvc,T);
-      AgregaVal_UV(uvi);
-      prom=Promedio_UV();
-      l= (int)roundf(prom*11/11);
-      sprintf(buf,"UV: %d UVC: %d  UVI: %d IBAR: %d\n",uv,uvc,uvi,l);
-      Serial.print (buf);
-      if(l>10){
-        leds=32;
-      }else if(l>7){
-        leds=27;
-      }else if(l>5){
-        leds=22;
-      }else if(l>2){
-        leds=17;
-      }else if(l>1){
-        leds=12;
-      }else if(l>0){
-        leds=6;
-      }else if(l==0){
-        leds=1;
-      }
-    
-    }else{
-      sprintf(buf,"Error de lectura uv: %d \n",uv);
-      Serial.print (buf);
-      leds=0;
-    }
-      GenBarra_Mat(Matriz,leds);
-      if(TXT_DEBUG>0)
-              Imprime_Mat(Matriz);
-      if(leds>12){
-        col=2;
-      }
-      if(leds>22){
-        col=0;
-      }
-            Grafica_Mat(Matriz,32,col,1);
-          if(DELAY_INFO>0)
-      delay(DELAY_INFO / portTICK_RATE_MS);
+          Imprime_Mat(Matriz);
     Blanc_Mat(Matriz);
-  //  Grafica_Banner();
-}
+ }
