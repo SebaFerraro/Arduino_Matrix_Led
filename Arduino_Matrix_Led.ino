@@ -29,26 +29,26 @@
 #define SCL_PIN GPIO_NUM_23
 #define Mat_Alt 8
 #define Mat_Larg 32
-#define SDELAY 600
+#define SDELAY 170
 //#define T IT_2
 #define DELAY_INFO 100
 #define DELAY_BANNER 3000
 #define TXT_DEBUG 0
 #define CaracteresArray CaracteresArray2
-#define MQTT_SERVER "10.77.17.89"  //you MQTT IP Address
+#define MQTT_SERVER "10.110.254.121"  //you MQTT IP Address
 #define MQTT_PORT 1883  //you MQTT IP Address
 #define MQTT_USER "ha"  //you MQTT IP Address
 #define MQTT_PASS "4ut0m4t1c0"  //you MQTT IP Address
 
-const char* ssid = "wifi";
-const char* password = "secret1703secret1703";
+const char* ssid = "10110";
+const char* password = "T3cn0C10r";
 static int taskCore = 0;
 int analog_value = 0;
 static int Wconectado = 0;
 String TopicBase = "cior";
 String TopicDev = "dev-display-01";
-String Tdisplay1 = "display/lab/dsp1";
-String Tdisplay2 = "display/lab/don1";
+String Tdisplay1 = "display/lab/don1";
+String Tdisplay2 = "display/lab/dsp1";
 String txt="";
 uint8_t  txtcolor=0;
 uint16_t txttiempo=0;
@@ -163,13 +163,18 @@ void Wifi_init(){
 }
 
 int suscribetopics_mqtt(){
-  int rsus;
+  int rsus,rsus1;
   String Topic1=TopicBase + "/" + Tdisplay1;
   rsus=client.subscribe(string2char(Topic1));
   Serial.print( "[SUBSCRIBE] Topic1" );
   Serial.println(Topic1);
   Serial.println(rsus);
-  return (rsus);
+  Topic1=TopicBase + "/" + Tdisplay2;
+  rsus1=client.subscribe(string2char(Topic1));
+  Serial.print( "[SUBSCRIBE] Topic2" );
+  Serial.println(Topic1);
+  Serial.println(rsus1);
+  return (rsus && rsus1);
 }
 
 char* string2char(String command){
@@ -214,14 +219,17 @@ void on_message(char* topic, byte* payload, unsigned int length) {
   
   if (topicStr == Topic2){
 
-    JsonObject& root=jsonBuffer.parseObject(payload);
+    JsonObject& root=jsonBuffer.parseObject((char*)cpayload);
     if (!root.success()) {
       Serial.println("parseObject() failed");
       return;
     }
+    Serial.println("Cpayload:");
+    root.printTo(Serial);
+    Serial.println("----");
     MSG ResMsg;
     if(root.containsKey("texto") && root.containsKey("color") && root.containsKey("tiempo") && root.containsKey("permanente") && root.containsKey("idperm")){
-      ResMsg.texto=root["texto"];
+      ResMsg.texto=(const char*)root["texto"];
       ResMsg.color=root["color"];
       ResMsg.tiempo=root["tiempo"];
       ResMsg.permanente=root["permanente"];
@@ -374,7 +382,7 @@ void Grafica_Car_Mat(const uint8_t Caract[], int inicio,uint32_t Mat[],uint8_t c
         for (int i=0;i<Mat_Alt;i++){
           Mat[i]=(uint32_t)(((Mat[i] << 1))| (uint32_t)(Caract[i]>>(8-j)));
         }
-        Grafica_Mat(Mat,32,color,0);
+        Grafica_Mat(Mat,32,color,1);
         if(SDELAY>0)
           delayMicroseconds(SDELAY);
      }
@@ -415,8 +423,8 @@ void Grafica_Mat(uint32_t Matriz[],int largo,int color,int borra){
                      //Serial.print("Clock RED.\n");
                      Serial.print(".");
       if(SDELAY>0)
-                    delayMicroseconds(SDELAY);
-                  digitalWrite(PIN_RED_CLK, 0);
+          delayMicroseconds(SDELAY);
+      digitalWrite(PIN_RED_CLK, 0);
       if(SDELAY>0)
           delayMicroseconds(SDELAY);
       if(borra==1){
@@ -429,7 +437,7 @@ void Grafica_Mat(uint32_t Matriz[],int largo,int color,int borra){
           digitalWrite(PIN4_RED1, 0);
           digitalWrite(PIN4_RED2, 0);
           if(SDELAY>0)
-            delayMicroseconds(SDELAY);
+             delayMicroseconds(SDELAY);
           digitalWrite(PIN_GRN_CLK, 1);
           if(TXT_DEBUG>0)
               //Serial.print("Clock GREEN BLANQUEO.\n");
@@ -480,9 +488,11 @@ void Grafica_Mat(uint32_t Matriz[],int largo,int color,int borra){
          //Serial.print("Clock RED-GREEN.\n");
          Serial.print(".");
       if(SDELAY>0)
-        delayMicroseconds(SDELAY);
+        delayMicroseconds(SDELAY*2);
       digitalWrite(PIN_RED_CLK, 0);
       digitalWrite(PIN_GRN_CLK, 0);
+      if(SDELAY>0)
+        delayMicroseconds(SDELAY*3);
       break;
     default:
       digitalWrite(PIN_RED_CLK, 1);
@@ -705,49 +715,67 @@ void loop(){
       Wifi_init();
     }
     if(!queue.isEmpty ()){
+        Serial.println("COLA# No esta vacia. Saca de la cola..");
         MsgTXT=queue.pop();
         
     }else{
-        if((sizeof(tabla)/sizeof(MsgTXT))>0){
-            while(txtindex<(sizeof(tabla)/sizeof(MsgTXT)) && txtindex<6){
-                MsgTXT=tabla[txtindex];
-                txtindex++;
-                if(MsgTXT.tiempo>0){
-                   break;    
-                }
-                
+        Serial.println("COLA# Esta vacia. Saca de Estatico..");
+        Serial.print("TXTIndex:");
+        Serial.println(txtindex);
+        while(txtindex<6){
+            MsgTXT=tabla[txtindex];
+            txtindex++;
+            Serial.print("While - tiempo: ");
+            Serial.println(MsgTXT.tiempo);
+            if(MsgTXT.tiempo>0){
+               break;    
             }
-             if(txtindex>=(sizeof(tabla)/sizeof(MsgTXT)) && txtindex>5)
-                txtindex=0;
-        }else{
-            txtindex=0;
-        }
+                
+       }
+       if(txtindex>5)
+          txtindex=0;
     }
     txt=MsgTXT.texto;
     txtcolor=MsgTXT.color;
     txttiempo=MsgTXT.tiempo;
     txtpermanente=MsgTXT.permanente;
     txtidperm=MsgTXT.idperm;
+     Serial.print("TXT: ");
+     Serial.print(txt);
+     Serial.print("   COLOR: ");
+     Serial.print(txtcolor);
+     Serial.print("   TIEMPO: ");
+     Serial.print(txttiempo);
+     Serial.print("   PERM: ");
+     Serial.print(txtpermanente);
+     Serial.print("   IDP: ");
+     Serial.println(txtidperm);
     
     int k=0;
     Blanc_Mat(Matriz);
     int letra=0;
-    for(int i=0;i<(sizeof(txt)-1);i++){
-        letra=(int)texto[i];
-        sprintf(buf,"Letra: %c int: %d \n",txt[i],letra);
-        Serial.print (buf);
-        //Pone_Car_Mat(TinyFont[letra-32],k,Matriz);
-        Grafica_Car_Mat(TinyFont[letra-32], 0,Matriz,txtcolor);
-        //Agrega_Car_Mat(small_font[letra-32], 0,Matriz);
-        //Agrega_Car_Mat(Sinclair_S[letra-32], 0,Matriz);
-        //Agrega_Car_Mat(Sinclair_Inverted_S[letra-32], 0,Matriz);
-        k=k+8;
-        if(TXT_DEBUG>0)
-          Imprime_Mat(Matriz);
+    if(txttiempo>0){
+      Serial.print("SIZEOF(TXT): ");
+      Serial.println(sizeof(txt)-1);
+      Serial.print("length(TXT): ");
+      Serial.println(txt.length());
+      for(int i=0;i<(txt.length());i++){
+          letra=(int)txt[i];
+          sprintf(buf,"Letra: %c int: %d \n",txt[i],letra);
+          Serial.print (buf);
+          //Pone_Car_Mat(TinyFont[letra-32],k,Matriz);
+          Grafica_Car_Mat(TinyFont[letra-32], 0,Matriz,txtcolor);
+          //Agrega_Car_Mat(small_font[letra-32], 0,Matriz);
+          //Agrega_Car_Mat(Sinclair_S[letra-32], 0,Matriz);
+          //Agrega_Car_Mat(Sinclair_Inverted_S[letra-32], 0,Matriz);
+          k=k+8;
+          if(TXT_DEBUG>0)
+            Imprime_Mat(Matriz);
+      }
+      if(txttiempo>0)
+            delay(txttiempo / portTICK_RATE_MS);
+      if(TXT_DEBUG>0)
+            Imprime_Mat(Matriz);
+      Blanc_Mat(Matriz);
     }
-    if(txttiempo>0)
-          delay(txttiempo / portTICK_RATE_MS);
-    if(TXT_DEBUG>0)
-          Imprime_Mat(Matriz);
-    Blanc_Mat(Matriz);
  }
