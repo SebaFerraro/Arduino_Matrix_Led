@@ -1,0 +1,138 @@
+from __future__ import print_function
+import requests
+import json
+import time
+import datetime
+import swagger_client
+from pprint import pprint
+from swagger_client import ApiClient, Configuration,Device,AssetControllerApi,AssetSearchQuery,Asset,EntityRelation,EntityRelationControllerApi
+from swagger_client.rest import ApiException
+import xlsxwriter
+
+tojson = lambda x: json.loads(str(x).replace("None","'None'").replace("'",'"').replace("True","true").replace("False","false"))
+
+
+# get the token. 
+headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' }
+login='{\"username\":\"sferrar0@rosario.gov.ar\", \"password\":\"secret1703\"}'
+token_response = requests.post('https://ioteens.cior.gob.ar/api/auth/login',data=login,headers=headers)
+print(token_response)
+token = json.loads(token_response.text)
+print(token['token'])
+        # set up the api-client. 
+
+api_client_config                   = Configuration()
+api_client_config.host              = 'https://ioteens.cior.gob.ar'
+api_client_config.api_key['X-Authorization']    = token['token']
+api_client_config.api_key_prefix['X-Authorization'] = 'Bearer'
+api_client                      = ApiClient(api_client_config)
+
+limit = '100000' # str | limit
+text_search = 'public' # str | textSearch (optional)
+id_offset = '' # str | idOffset (optional)
+text_offset = '' # str | textOffset (optional)
+t1=long((time.time()) * 1000)
+t2=long((t1 - (24 *3600 * 1000)))
+
+
+customer_controller_api = swagger_client.CustomerControllerApi(api_client=api_client)
+device_controller_api  = swagger_client.DeviceControllerApi(api_client=api_client)
+device_api_controller_api  = swagger_client.DeviceApiControllerApi(api_client=api_client)
+asset_controller_api = swagger_client.AssetControllerApi(api_client=api_client)
+entity_relation_controller_api  = swagger_client.EntityRelationControllerApi(api_client=api_client)
+admin_controller_api = swagger_client.AdminControllerApi()
+
+#try:
+#    # checkUpdates
+#    api_response = admin_controller_api.check_updates_using_get()
+#    pprint(api_response)
+#except ApiException as e:
+#    print("Exception when calling AdminControllerApi->check_updates_using_get: %s\n" % e)
+
+#try: 
+#    # getCustomers
+#    api_response = customer_controller_api.get_customers_using_get(limit, text_search=text_search, id_offset=id_offset, text_offset=text_offset)
+#    pprint(api_response)
+#except ApiException as e:
+#    print("Exception when calling CustomerControllerApi->get_customers_using_get: %s\n" % e)
+
+
+customer_id = '08e9ac90-e8d5-11e8-8326-4f6b4e38de79' # str | customerId
+#type = 'DEVICE' # str | type (optional)
+workbook = xlsxwriter.Workbook('Sensores.xlsx')
+worksheet = workbook.add_worksheet('CMDC')
+bold = workbook.add_format({'bold': True})
+row = 1
+col = 0
+
+try: 
+    # getCustomerDevices
+    #api_response = device_controller_api.get_customer_devices_using_get(customer_id, limit, type=type, text_search=text_search, id_offset=id_offset, text_offset=text_offset)
+    api_response = device_controller_api.get_customer_devices_using_get(customer_id, limit)
+    print(api_response)
+    sal=tojson(api_response)
+    print(sal['data'])
+    isensor=0
+    for i in sal['data'] :
+        
+        devid=i['id']['id']
+        devname=i['name']
+        print("Device ID: ",devid)
+        print("Intervalo :", str(t2), " - ",str(t1))
+        headers = { 'Content-Type': 'application/json', 'Accept': 'application/json','X-Authorization': 'Bearer ' + str(token['token']) }
+        
+        dato={'keys': ['temperatura','temperatura1','humedad','lux','stermica'], 'startTs': str(t2),'endTs': str(t1), 'interval': '60000', 'limit': str(limit), 'agg': 'AVG'}
+        sresponse = requests.get('https://ioteens.cior.gob.ar/api/plugins/telemetry/DEVICE/'+ devid + '/values/timeseries',params=dato,headers=headers)
+        print(sresponse.url)
+        print("SResponse :")  
+        pprint(sresponse)
+        sali = json.loads(sresponse.text)
+        #print("Sali :")
+        #print(sali)
+        colkey=isensor*10
+        worksheet.write(0, colkey,devname,bold)
+        #row += 1
+        for key in sali :
+            worksheet.write(row, colkey,'Tiempo',bold )
+            worksheet.write(row, colkey + 1, key,bold)
+            row += 1
+            for datos in sali[key]:
+                date = datetime.datetime.fromtimestamp(long(datos['ts'])/1000)
+                tiempo=date.strftime('%Y-%m-%d %H:%M:%S')
+                print(key,": ",tiempo,datos['value'],)
+                worksheet.write(row, colkey,tiempo)
+                worksheet.write(row, colkey + 1, float(datos['value']))
+                row += 1
+            colkey+=2
+            row=1
+        isensor+=1
+    #worksheet.write(row, 0, 'Total')
+    #worksheet.write(row, 1, '=SUM(B1:B4)')
+
+    workbook.close()
+
+# Write a total using a formula.
+# set up the api-client. 
+
+except ApiException as e:
+    print("Exception when calling DeviceControllerApi->get_customer_devices_using_get: %s\n" % e)
+
+
+#try: 
+#    # getDeviceTypes
+#    api_response = device_controller_api.get_device_types_using_get()
+#    pprint(api_response)
+#except ApiException as e:
+#    print("Exception when calling DeviceControllerApi->get_device_types_usin")
+
+#dv = Device(name="A",type="Sensor1")            
+#newdevice_res = device_controller_api.save_device_using_post(dv)
+#devicedata = tojson(newdevice_res) 
+
+# Get the new device id.
+#deviceid = devicedata['id']['id']
+
+#newAsset = Asset(name="B",type="Home") 
+#R,res,header = asset_controller_api.save_asset_using_post_with_http_info(newAsset)          
+#asset_res = tojson(R)
+#assetid = asset_res['id']['id']

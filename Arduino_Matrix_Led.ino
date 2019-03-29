@@ -276,6 +276,12 @@ void coreTask( void * pvParameters ){
     int rsus;
     
     while(true){
+      if (Wconectado == 0){
+         Serial.println("Error No conectado wifi Wifi_init.");
+         Wifi_init();
+         delay(10000);
+         Serial.println("wifi Wifi_init timeout.");
+      }
       if(Wconectado == 1){
           if(!client.connected()) {
             Serial.print("Conectando ThingsBoard node ...");
@@ -697,10 +703,10 @@ void setup() {
  
  if(TXT_DEBUG>0)
     Serial.print("BLK 1.\n");
-        delay(500 / portTICK_PERIOD_MS);
+    delay(500 / portTICK_PERIOD_MS);
  if(TXT_DEBUG>0)
-          Serial.print("BLK 0.\n");
-        delay(200 / portTICK_PERIOD_MS);
+    Serial.print("BLK 0.\n");
+    delay(200 / portTICK_PERIOD_MS);
   int val=0;
   Blanc_Mat(Matriz);
   Grafica_Mat(Matriz,32,2,0,SDELAY);
@@ -716,11 +722,7 @@ void setup() {
  
 void loop(){
   //val=getTemp();
-  if (Wconectado == 0){
-    Serial.println("Error No conectado wifi Wifi_init.");
-    Wifi_init();
-    delay(7000);
-  }
+  
   if(DISPLAYON==1){
     if(!queue.isEmpty ()){
         Serial.println("COLA# No esta vacia. Saca de la cola..");
@@ -792,6 +794,8 @@ void loop(){
   }else{
     Serial.print("DISPLAYON: ");
     Serial.println(DISPLAYON);
+    Blanc_Mat(Matriz);
+    Grafica_Mat(Matriz,32,2,0,SDELAY);
     delay(DELAY_BANNER / portTICK_RATE_MS);
   }
  }
